@@ -1,0 +1,16 @@
+# Bibliography parsing and formatting
+pybtex>=0.24.0
+
+# For GUI application development
+PyQt6>=6.0.0
+
+# Built-in Python libraries (no need to install):
+# - os (standard library)
+# - difflib (standard library)
+# - re (standard library)
+# - collections (standard library)
+
+# Optional: If you plan to distribute or test the package
+# You can add development tools below (uncomment if needed)
+# pytest
+# flake8
