@@ -66,11 +66,12 @@ class PaperRefCheckApp(QMainWindow):
                    <b>Date:</b> 2025 | 
                    <b>Version:</b> 0.0.1 | 
                    <b>License:</b> MIT</p>
-                   <b>Note:</b> This is an effective assistant for checking the references in your papers, 
-                   which can provide great help when you are writing your papers, especially the literature review. 
+                   <b>Note:</b> This is an effective and light-flash assistant for checking the references and rapidly finding out problems 
+                   in your papers with just uploading .bib and .tex file of the paper, 
+                   which can provide great help when you are writing papers agonizingly, especially the literature review.
                    Please ensure your .bib file is properly formatted for accurate checking. 
                    Verify that all entries have valid syntax before running analysis. |
-                   <b>GitHub:</b> <a href="https://github.com" style="color: #4CAF50; text-decoration: none;">Project Repository</a></p>
+                   <b>GitHub:</b> <a href="https://github.com/Mutteradmin/Paper_Reference_Check_Helper.git" style="color: #4CAF50; text-decoration: none;">Project Repository</a></p>
                """)
         info_label.linkActivated.connect(self.open_github_link)
         main_layout.addWidget(info_label)
