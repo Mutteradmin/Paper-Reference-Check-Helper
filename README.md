@@ -6,9 +6,9 @@ You can either pack the program to an .exe file or directly use it by running ma
 ```bash
 pyinstaller --onefile --windowed --icon="app_icon.ico" --add-data "ref_checker_logic.py;." --add-data "icon.png;." --collect-all "pybtex" main_gui.py
 ```
-You can use Pyinstaller to pack the program by downloading it through pip as follows:
+Use Pyinstaller to pack the program by downloading it through pip as follows:
 ```bash
-pip install Pyinstaller
+pip install pyinstaller
 ```
 
 # Future
