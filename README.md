@@ -6,6 +6,10 @@ You can either pack the program to an .exe file or directly use it by running ma
 ```bash
 pyinstaller --onefile --windowed --icon="app_icon.ico" --add-data "ref_checker_logic.py;." --add-data "icon.png;." --collect-all "pybtex" main_gui.py
 ```
+You can use Pyinstaller to pack the program by downloading it through pip as follows:
+```bash
+pip install Pyinstaller
+```
 
 # Future
 This work is supporting just by myself and Gemini. My initial blueprint was to create a completely open-source, quite flash and beautiful literature management software rather than a bloated and paid large-scale one. But I don't know for sure if I have enough time to upgrade and improve it. For cooperation, My QQ is 1665395842.
