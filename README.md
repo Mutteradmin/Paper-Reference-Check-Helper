@@ -4,7 +4,7 @@ This is an effective and light-flash assistant for checking the references and r
 # Note before using
 You can either pack the program to an .exe file or directly use it by running main_GUI.py in Python. For a flasher use in format of .exe file, remember to use Pyinstaller (my python version is 3.9) to process the main body of the program (not including the .spec file. It is just an instance for my Pyinstaller using record) and then find your .exe in \dist folder after it completes. An example of CLI operation on Windows is as follows: 
 ```bash
-pyinstaller --onefile --windowed --icon="app_icon.ico" --add-data "ref_checker_logic.py;." --add-data "icon.png;." --collect-all "pybtex" main_gui.py
+pyinstaller --onefile --windowed --icon="app_icon.ico" --add-data "ref_checker_logic.py;." --add-data "icon.png;." --collect-all "pybtex" --collect-all "latexcodec" main_gui.py
 ```
 Use Pyinstaller to pack the program by downloading it through pip as follows:
 ```bash
