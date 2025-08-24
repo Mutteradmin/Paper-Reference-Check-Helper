@@ -14,6 +14,7 @@ from ref_checker_logic import ReferenceChecker
 import os
 import time
 import re
+import json  # Added for favorites persistence
 
 
 def resource_path(relative_path):
@@ -64,6 +65,8 @@ class PaperRefCheckApp(QMainWindow):
         self.checker = ReferenceChecker()
         self.bib_entries_list = []  # Store the order of bib entries
         self.bib_file_path = ""  # Store the current bib file path
+        self.favorites = []  # List to store favorite entries as original strings
+        self.load_favorites()  # Load persisted favorites
         self.initUI()
 
     def initUI(self):
@@ -110,6 +113,11 @@ class PaperRefCheckApp(QMainWindow):
 
         left_layout.addWidget(scroll_area)
 
+        # View Favorites button
+        view_fav_btn = QPushButton("View Favorites")
+        view_fav_btn.clicked.connect(self.view_favorites)
+        left_layout.addWidget(view_fav_btn)
+
         # Save button
         save_btn = QPushButton("Save Changes to Bib File")
         save_btn.clicked.connect(self.save_bib_file)
@@ -123,13 +131,13 @@ class PaperRefCheckApp(QMainWindow):
         # Add left widget to splitter
         main_splitter.addWidget(left_widget)
 
-        # Right panel (existing UI)
-        right_widget = QLabel()
+        # Right panel
+        right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setSpacing(15)
         right_layout.setContentsMargins(15, 15, 15, 15)
 
-        # 添加信息显示区域
+        # info area to dislay information of the software
         info_label = QLabel()
         info_label.setMaximumHeight(110)
         info_label.setStyleSheet("""
@@ -154,7 +162,7 @@ class PaperRefCheckApp(QMainWindow):
         info_label.setText("""
                    <p><b>Author:</b> Kewei Tsinghua University| 
                    <b>Date:</b> 2025 | 
-                   <b>Version:</b> 0.0.2 | 
+                   <b>Version:</b> 0.0.3 | 
                    <b>License:</b> MIT</p>
                    <b>Note:</b> This is an effective and light-flash assistant for checking the references and rapidly finding out problems 
                    in your papers with just uploading .bib and .tex file of the paper, 
@@ -226,12 +234,31 @@ class PaperRefCheckApp(QMainWindow):
         main_splitter.addWidget(right_widget)
 
         # Set initial splitter sizes
-        main_splitter.setSizes([300, 700])
+        main_splitter.setSizes([400, 700])
 
         self.statusBar().showMessage("Ready. Please select your .bib and .tex files.")
 
         # Initialize entries list
         self.entry_widgets = []
+
+    def load_favorites(self):
+        """Load favorites from a persistent JSON file."""
+        try:
+            with open('favorites.json', 'r', encoding='utf-8') as f:
+                self.favorites = json.load(f)
+        except FileNotFoundError:
+            self.favorites = []
+        except Exception as e:
+            self.show_error(f"Failed to load favorites: {str(e)}")
+            self.favorites = []
+
+    def save_favorites(self):
+        """Save favorites to a persistent JSON file."""
+        try:
+            with open('favorites.json', 'w', encoding='utf-8') as f:
+                json.dump(self.favorites, f)
+        except Exception as e:
+            self.show_error(f"Failed to save favorites: {str(e)}")
 
     def update_entries_list(self):
         """Update the left sidebar with all bib entries"""
@@ -276,12 +303,19 @@ class PaperRefCheckApp(QMainWindow):
 
             label.setToolTip(tooltip)
 
+            # Star button for favorites
+            is_favorite = original_text in self.favorites
+            star_btn = QPushButton("⭐" if is_favorite else "☆")
+            star_btn.setFixedSize(35, 35)
+            star_btn.clicked.connect(lambda checked, k=key: self.toggle_favorite(k))
+
             # Delete button
             delete_btn = QPushButton("❌")
             delete_btn.setFixedSize(35, 35)
             delete_btn.clicked.connect(lambda checked, k=key: self.delete_entry(k))
 
             entry_layout.addWidget(label, 1)
+            entry_layout.addWidget(star_btn)
             entry_layout.addWidget(delete_btn)
 
             self.entries_layout.addWidget(entry_widget)
@@ -290,6 +324,92 @@ class PaperRefCheckApp(QMainWindow):
             # Store the key as a property for filtering
             entry_widget.setProperty("entry_key", key)
             entry_widget.setProperty("entry_title", entry.get('title', '').lower())
+
+    def toggle_favorite(self, key):
+        """Toggle the favorite status of an entry."""
+        original = self.checker.get_original_entry(key)
+        if original in self.favorites:
+            self.favorites.remove(original)
+            self.statusBar().showMessage(f"Removed {key} from favorites.")
+        else:
+            self.favorites.append(original)
+            self.statusBar().showMessage(f"Added {key} to favorites.")
+        self.save_favorites()
+        self.update_entries_list()  # Refresh to update star icons
+
+    def view_favorites(self):
+        """Open a dialog to view and manage favorites."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Favorites")
+        dialog.setMinimumSize(600, 400)
+        layout = QVBoxLayout(dialog)
+
+        list_widget = QListWidget()
+        self.populate_fav_list(list_widget)
+        layout.addWidget(list_widget)
+
+        save_btn = QPushButton("Save Favorites")
+        save_btn.clicked.connect(self.save_favorites)
+        layout.addWidget(save_btn)
+
+        export_btn = QPushButton("Export Favorites to .bib")
+        export_btn.clicked.connect(self.export_favorites)
+        layout.addWidget(export_btn)
+
+        dialog.exec()
+
+    def populate_fav_list(self, list_widget):
+        """Populate the favorites list widget with entries and delete buttons."""
+        list_widget.clear()
+        for i, fav in enumerate(self.favorites):
+            try:
+                entries, _ = self.checker.parse_bib_string(fav)
+                for key, entry in entries.items():
+                    item = QListWidgetItem()
+                    wid = QWidget()
+                    lay = QHBoxLayout(wid)
+                    title_preview = entry['title'][:50] + "..." if len(entry['title']) > 50 else entry['title']
+                    label = QLabel(f"{key}: {title_preview}")
+                    label.setWordWrap(True)
+                    del_btn = QPushButton("❌")
+                    del_btn.setFixedSize(35, 35)
+                    del_btn.clicked.connect(lambda checked, idx=i, lw=list_widget: self.remove_fav_and_refresh(idx, lw))
+                    lay.addWidget(label, 1)
+                    lay.addWidget(del_btn)
+                    item.setSizeHint(wid.sizeHint())
+                    list_widget.addItem(item)
+                    list_widget.setItemWidget(item, wid)
+            except Exception as e:
+                # Skip invalid entries
+                pass
+
+    def remove_fav_and_refresh(self, idx, list_widget):
+        """Remove a favorite and refresh the list."""
+        if 0 <= idx < len(self.favorites):
+            del self.favorites[idx]
+            self.save_favorites()
+            self.populate_fav_list(list_widget)
+            self.statusBar().showMessage("Removed entry from favorites.")
+            # Also refresh main list if needed
+            self.update_entries_list()
+
+    def export_favorites(self):
+        """Export all favorites to a new .bib file."""
+        if not self.favorites:
+            self.show_error("No favorites to export.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(self, "Export Favorites", "", "BibTeX Files (*.bib)")
+        if not file_path:
+            return
+
+        try:
+            content = "\n\n".join(self.favorites)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            self.statusBar().showMessage(f"✅ Favorites exported to {file_path}")
+        except Exception as e:
+            self.show_error(f"Failed to export favorites: {str(e)}")
 
     def filter_entries(self):
         """Filter entries based on search text"""
