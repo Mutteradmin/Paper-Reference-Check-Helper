@@ -3,6 +3,7 @@ import os
 import difflib
 import re
 from collections import Counter
+from pybtex.database import Person, Entry  # Added Person, Entry if needed, but already imported elsewhere
 
 
 class ReferenceChecker:
@@ -12,7 +13,7 @@ class ReferenceChecker:
     """
 
     def __init__(self):
-        self.bib_entries = {}  # Stores parsed entries for comparison
+        self.bib_entries = {}  # Stores parsed Entry objects
         self.original_entries = {}  # Stores original entry text with all fields
 
     def normalize_title(self, title):
@@ -24,18 +25,16 @@ class ReferenceChecker:
         title = re.sub(r"\s+", " ", title).strip()
         return title
 
+    def get_authors(self, entry):
+        """Get authors as string."""
+        return ' and '.join(str(p) for p in entry.persons.get('author', []))
+
     def _parse_and_store(self, block, entries, original_entries, key):
         """Helper to parse a single entry block and store it."""
         try:
             bib_data = parse_string(block, 'bibtex')
             for entry_key, entry in bib_data.entries.items():
-                fields = {
-                    'key': entry_key,
-                    'title': self.normalize_title(entry.fields.get('title', '')),
-                    'author': entry.fields.get('author', '').lower(),
-                    'year': entry.fields.get('year', ''),
-                }
-                entries[entry_key] = fields
+                entries[entry_key] = entry  # Store the Entry object
                 # Store the original block text
                 original_entries[entry_key] = block.strip()
         except Exception as e:
@@ -138,15 +137,21 @@ class ReferenceChecker:
         user_entries, _ = self.parse_bib_string(user_bib_str)  # We only need parsed data here
         duplicates = []
         for u_key, u_entry in user_entries.items():
+            u_title = self.normalize_title(u_entry.fields.get('title', ''))
+            u_author = self.get_authors(u_entry).lower()
+            u_year = u_entry.fields.get('year', '')
             for e_key, e_entry in self.bib_entries.items():
-                if self.are_titles_similar(u_entry['title'], e_entry['title'], threshold=title_threshold):
-                    year_match = difflib.SequenceMatcher(None, u_entry['year'], e_entry['year']).ratio()
-                    author_match = difflib.SequenceMatcher(None, u_entry['author'], e_entry['author']).ratio()
+                e_title = self.normalize_title(e_entry.fields.get('title', ''))
+                if self.are_titles_similar(u_title, e_title, threshold=title_threshold):
+                    e_author = self.get_authors(e_entry).lower()
+                    e_year = e_entry.fields.get('year', '')
+                    year_match = difflib.SequenceMatcher(None, u_year, e_year).ratio()
+                    author_match = difflib.SequenceMatcher(None, u_author, e_author).ratio()
                     if year_match > 0.3 and author_match > 0.3:
                         duplicates.append({
                             'user_key': u_key,
                             'existing_key': e_key,
-                            'title': u_entry['title'],
+                            'title': u_title,
                             'reason': 'Title match + partial metadata'
                         })
                         break

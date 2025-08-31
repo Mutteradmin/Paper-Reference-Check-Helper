@@ -15,6 +15,7 @@ import os
 import time
 import re
 import json  # Added for favorites persistence
+from pybtex.database import Person  # Added for editing persons
 
 
 def resource_path(relative_path):
@@ -67,17 +68,19 @@ class PaperRefCheckApp(QMainWindow):
         self.bib_file_path = ""  # Store the current bib file path
         self.favorites = []  # List to store favorite entries as original strings
         self.load_favorites()  # Load persisted favorites
+        self.current_entry_key = None
+        self.field_edits = {}
         self.initUI()
 
     def initUI(self):
         self.setWindowTitle("Paper Reference Check Helper")
-        self.setGeometry(100, 100, 1200, 750)
+        self.setGeometry(100, 100, 1400, 750)
         self.setWindowIcon(QIcon('icon.png'))  # Optional: add an icon file
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Create main splitter for left and right panels
+        # Create main splitter for left, middle, and right panels
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout = QHBoxLayout(central_widget)
         main_layout.addWidget(main_splitter)
@@ -131,15 +134,40 @@ class PaperRefCheckApp(QMainWindow):
         # Add left widget to splitter
         main_splitter.addWidget(left_widget)
 
-        # Right panel
+        # middle panel for entry details
+        middle_widget = QWidget()
+        middle_layout = QVBoxLayout(middle_widget)
+        middle_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.details_form = QFormLayout()
+        details_group = QGroupBox("Entry Details")
+        details_group.setLayout(self.details_form)
+
+        details_scroll = QScrollArea()
+        details_scroll.setWidget(details_group)
+        details_scroll.setWidgetResizable(True)
+        middle_layout.addWidget(details_scroll)
+
+        self.bibtex_display = QTextEdit()
+        self.bibtex_display.setReadOnly(True)
+        middle_layout.addWidget(self.bibtex_display)
+
+        save_details_btn = QPushButton("Save Changes")
+        save_details_btn.clicked.connect(self.save_entry_changes)
+        middle_layout.addWidget(save_details_btn)
+
+        # Add right widget to splitter
+        main_splitter.addWidget(middle_widget)
+
+        # Right panel (existing operations and results)
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setSpacing(15)
         right_layout.setContentsMargins(15, 15, 15, 15)
 
-        # info area to dislay information of the software
+        # Add area to display information
         info_label = QLabel()
-        info_label.setMaximumHeight(110)
+        info_label.setMaximumHeight(120)
         info_label.setStyleSheet("""
                    QLabel {
                        background-color: #2d2d2d;
@@ -162,9 +190,10 @@ class PaperRefCheckApp(QMainWindow):
         info_label.setText("""
                    <p><b>Author:</b> Kewei Tsinghua University| 
                    <b>Date:</b> 2025 | 
-                   <b>Version:</b> 0.0.3 | 
-                   <b>License:</b> MIT</p>
-                   <b>Note:</b> This is an effective and light-flash assistant for checking the references and rapidly finding out problems 
+                   <b>Version:</b> 0.0.5 | 
+                   <b>License:</b> MIT</p> 
+                   
+                   <p><b>Note:</b> This is an effective and light-flash assistant for checking the references and rapidly finding out problems 
                    in your papers with just uploading .bib and .tex file of the paper, 
                    which can provide great help when you are writing papers agonizingly, especially the literature review.
                    Please ensure your .bib file is properly formatted for accurate checking. 
@@ -230,11 +259,11 @@ class PaperRefCheckApp(QMainWindow):
         results_group.setLayout(results_layout)
         right_layout.addWidget(results_group)
 
-        # Add right widget to splitter
+        # Add middle widget to splitter
         main_splitter.addWidget(right_widget)
 
         # Set initial splitter sizes
-        main_splitter.setSizes([400, 700])
+        main_splitter.setSizes([300, 300, 350])
 
         self.statusBar().showMessage("Ready. Please select your .bib and .tex files.")
 
@@ -255,8 +284,12 @@ class PaperRefCheckApp(QMainWindow):
     def save_favorites(self):
         """Save favorites to a persistent JSON file."""
         try:
-            with open('favorites.json', 'w', encoding='utf-8') as f:
-                json.dump(self.favorites, f)
+            if not self.bib_file_path:
+                self.show_error("Nothing new to save to your favorites.")
+            else:
+                with open('favorites.json', 'w', encoding='utf-8') as f:
+                    json.dump(self.favorites, f)
+                self.statusBar().showMessage(f"✅ Successfully saved favorites.")
         except Exception as e:
             self.show_error(f"Failed to save favorites: {str(e)}")
 
@@ -273,7 +306,6 @@ class PaperRefCheckApp(QMainWindow):
         # Add each entry to the list, respecting the order in self.bib_entries_list
         for key in self.bib_entries_list:
             entry = self.checker.bib_entries.get(key)
-            # Add a defensive check in case the dictionary and list get out of sync
             if not entry:
                 continue
 
@@ -282,28 +314,31 @@ class PaperRefCheckApp(QMainWindow):
             entry_layout.setContentsMargins(5, 2, 5, 2)
 
             # Entry label with title and key
-            title_preview = entry.get('title', 'No title')[:50] + "..." if len(
-                entry.get('title', '')) > 50 else entry.get('title', 'No title')
+            title = entry.fields.get('title', 'No title')
+            title_preview = title[:50] + "..." if len(title) > 50 else title
             label = QLabel(f"{key}: {title_preview}")
             label.setWordWrap(True)
 
             # Create tooltip with full information
-            tooltip = f"Key: {key}\nTitle: {entry.get('title', 'No title')}\nAuthor: {entry.get('author', 'Unknown')}\nYear: {entry.get('year', 'Unknown')}"
+            tooltip = f"Key: {key}\nType: {entry.type}"
 
-            # Extract additional fields from the original entry text
-            original_text = self.checker.get_original_entry(key)
-            if original_text:
-                # Extract all fields from the original text
-                field_matches = re.finditer(r'(\w+)\s*=\s*\{([^}]*)\}', original_text)
-                for match in field_matches:
-                    field_name = match.group(1).lower()
-                    field_value = match.group(2)
-                    if field_name not in ['title', 'author', 'year']:
-                        tooltip += f"\n{field_name}: {field_value}"
+            # Persons
+            for role, persons in entry.persons.items():
+                tooltip += f"\n{role.capitalize()}: {' and '.join(str(p) for p in persons)}"
+
+            # Fields
+            for field, value in entry.fields.items():
+                tooltip += f"\n{field.capitalize()}: {value}"
 
             label.setToolTip(tooltip)
 
+            # View button (eye)
+            view_btn = QPushButton("👁")
+            view_btn.setFixedSize(35, 35)
+            view_btn.clicked.connect(lambda checked, k=key: self.show_entry_details(k))
+
             # Star button for favorites
+            original_text = self.checker.get_original_entry(key)
             is_favorite = original_text in self.favorites
             star_btn = QPushButton("⭐" if is_favorite else "☆")
             star_btn.setFixedSize(35, 35)
@@ -315,6 +350,7 @@ class PaperRefCheckApp(QMainWindow):
             delete_btn.clicked.connect(lambda checked, k=key: self.delete_entry(k))
 
             entry_layout.addWidget(label, 1)
+            entry_layout.addWidget(view_btn)
             entry_layout.addWidget(star_btn)
             entry_layout.addWidget(delete_btn)
 
@@ -323,7 +359,81 @@ class PaperRefCheckApp(QMainWindow):
 
             # Store the key as a property for filtering
             entry_widget.setProperty("entry_key", key)
-            entry_widget.setProperty("entry_title", entry.get('title', '').lower())
+            entry_widget.setProperty("entry_title", self.checker.normalize_title(title).lower())
+
+        # If current entry still exists, refresh details
+        if self.current_entry_key and self.current_entry_key in self.bib_entries_list:
+            self.show_entry_details(self.current_entry_key)
+
+    def show_entry_details(self, key):
+        """Display and allow editing of entry details in the right panel."""
+        self.current_entry_key = key
+        entry = self.checker.bib_entries[key]
+
+        # Clear existing form widgets
+        for i in reversed(range(self.details_form.count())):
+            item = self.details_form.itemAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self.field_edits = {}
+
+        # Key (non-editable)
+        self.details_form.addRow("Key:", QLabel(key))
+
+        # Entry type
+        type_edit = QLineEdit(entry.type)
+        self.field_edits[('type', '')] = type_edit
+        self.details_form.addRow("Entry Type:", type_edit)
+
+        # Persons (e.g., author, editor)
+        for role, persons in entry.persons.items():
+            value = ' and '.join(str(p) for p in persons)
+            edit = QLineEdit(value)
+            self.field_edits[('person', role)] = edit
+            self.details_form.addRow(role.capitalize() + ":", edit)
+
+        # Fields (e.g., title, year, doi, publisher)
+        for field, value in entry.fields.items():
+            edit = QLineEdit(str(value))
+            self.field_edits[('field', field)] = edit
+            self.details_form.addRow(field.capitalize() + ":", edit)
+
+        # Display BibTeX
+        self.bibtex_display.setText(self.checker.get_original_entry(key))
+
+    def save_entry_changes(self):
+        """Save changes to the entry."""
+        if not self.current_entry_key:
+            return
+
+        entry = self.checker.bib_entries[self.current_entry_key]
+
+        for (typ, name), edit in self.field_edits.items():
+            if typ == 'type':
+                entry.type = edit.text()
+            elif typ == 'person':
+                try:
+                    persons = [Person(s.strip()) for s in edit.text().split(' and ') if s.strip()]
+                    entry.persons[name] = persons
+                except Exception as e:
+                    self.show_error(f"Error parsing {name}: {str(e)}")
+                    return
+            elif typ == 'field':
+                entry.fields[name] = edit.text()
+
+        try:
+            original = entry.to_string('bibtex')
+            self.checker.original_entries[self.current_entry_key] = original
+            self.bibtex_display.setText(original)
+        except Exception as e:
+            self.show_error(f"Error generating BibTeX: {str(e)}")
+            return
+
+        # Refresh the entries list to reflect changes
+        self.update_entries_list()
+
+        self.statusBar().showMessage(f"Entry '{self.current_entry_key}' updated.", 3000)
 
     def toggle_favorite(self, key):
         """Toggle the favorite status of an entry."""
@@ -334,7 +444,7 @@ class PaperRefCheckApp(QMainWindow):
         else:
             self.favorites.append(original)
             self.statusBar().showMessage(f"Added {key} to favorites.")
-        self.save_favorites()
+        # self.save_favorites()
         self.update_entries_list()  # Refresh to update star icons
 
     def view_favorites(self):
@@ -368,7 +478,7 @@ class PaperRefCheckApp(QMainWindow):
                     item = QListWidgetItem()
                     wid = QWidget()
                     lay = QHBoxLayout(wid)
-                    title_preview = entry['title'][:50] + "..." if len(entry['title']) > 50 else entry['title']
+                    title_preview = entry.fields.get('title', '')[:50] + "..." if len(entry.fields.get('title', '')) > 50 else entry.fields.get('title', '')
                     label = QLabel(f"{key}: {title_preview}")
                     label.setWordWrap(True)
                     del_btn = QPushButton("❌")
@@ -440,11 +550,19 @@ class PaperRefCheckApp(QMainWindow):
             if key in self.checker.bib_entries:
                 # Remove from our data structures
                 del self.checker.bib_entries[key]
-                if hasattr(self.checker, 'original_entries') and key in self.checker.original_entries:
+                if key in self.checker.original_entries:
                     del self.checker.original_entries[key]
 
                 if key in self.bib_entries_list:
                     self.bib_entries_list.remove(key)
+
+                # If current details is this key, clear
+                if self.current_entry_key == key:
+                    self.current_entry_key = None
+                    # Clear form
+                    for i in reversed(range(self.details_form.count())):
+                        self.details_form.itemAt(i).widget().deleteLater()
+                    self.bibtex_display.clear()
 
                 # Update the UI
                 self.update_entries_list()
@@ -478,7 +596,7 @@ class PaperRefCheckApp(QMainWindow):
 
         # Add all entries in the correct order
         for key in self.bib_entries_list:
-            if hasattr(self.checker, 'original_entries') and key in self.checker.original_entries:
+            if key in self.checker.original_entries:
                 new_content += self.checker.original_entries[key] + "\n\n"
 
         # Write the new content to the file
@@ -506,7 +624,7 @@ class PaperRefCheckApp(QMainWindow):
 
         # Add all entries in the correct order
         for key in self.bib_entries_list:
-            if hasattr(self.checker, 'original_entries') and key in self.checker.original_entries:
+            if key in self.checker.original_entries:
                 new_content += self.checker.original_entries[key] + "\n\n"
 
         # Write the new content to the file
@@ -611,15 +729,10 @@ class PaperRefCheckApp(QMainWindow):
     def add_new_entry(self, bib_text):
         """Add a new entry to the bibliography at a selected position"""
         try:
-            # --- FIX START ---
-            # Parse the new entry/entries. This now returns two dicts:
-            # 1. Parsed data (for logic)
-            # 2. Original text blocks (for saving)
             new_entries, new_original_blocks = self.checker.parse_bib_string(bib_text)
             if not new_entries:
                 self.show_error("Could not parse the provided BibTeX entry.")
                 return
-            # --- FIX END ---
 
             # Show dialog to select insertion position
             dialog = InsertDialog(self, self.bib_entries_list)
@@ -631,10 +744,7 @@ class PaperRefCheckApp(QMainWindow):
                     self.checker.bib_entries[key] = entry
                     if not hasattr(self.checker, 'original_entries'):
                         self.checker.original_entries = {}
-                    # --- FIX START ---
-                    # Assign the SPECIFIC original text for this key, not the whole input string
                     self.checker.original_entries[key] = new_original_blocks[key]
-                    # --- FIX END ---
 
                 # Update the ordered list of entries
                 new_keys = list(new_entries.keys())
@@ -673,7 +783,8 @@ class PaperRefCheckApp(QMainWindow):
                 self.results_text.append(
                     f"📌 Found {len(unreferenced)} unreferenced 'zombie' entries in .bib file:\n" + "=" * 60)
                 for key in unreferenced:
-                    title = self.checker.bib_entries[key]['title']
+                    entry = self.checker.bib_entries[key]
+                    title = entry.fields.get('title', 'No title')
                     self.results_text.append(f"  - [{key}] {title[:80]}{'...' if len(title) > 80 else ''}")
             else:
                 self.results_text.append("✅ All entries in the .bib file are cited in the .tex file. Great!")
@@ -731,7 +842,6 @@ def apply_stylesheet(app):
     """A simple dark theme for a modern look."""
     app.setStyle("Fusion")
     dark_palette = QPalette()
-    # ... (Stylesheet code remains the same)
     dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
     dark_palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
     dark_palette.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
