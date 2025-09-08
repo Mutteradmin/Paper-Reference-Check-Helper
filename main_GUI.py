@@ -70,6 +70,7 @@ class PaperRefCheckApp(QMainWindow):
         self.load_favorites()  # Load persisted favorites
         self.current_entry_key = None
         self.field_edits = {}
+        self.is_dark_theme = True  # Track current theme
         self.initUI()
 
     def initUI(self):
@@ -80,9 +81,39 @@ class PaperRefCheckApp(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
+        # Main layout for central widget
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Top bar for theme toggle button
+        self.top_bar = QWidget()  # 使用self引用
+        self.top_bar.setObjectName("top_bar")
+        self.top_bar.setStyleSheet("background-color: #353535; border-bottom: 1px solid #444;")
+        top_bar_layout = QHBoxLayout(self.top_bar)
+        top_bar_layout.setContentsMargins(10, 5, 10, 5)
+        self.top_bar.setFixedHeight(43)
+
+        # Add stretch to push the button to the right
+        top_bar_layout.addStretch()
+
+        # Theme toggle button
+        self.theme_toggle_btn = QPushButton("🌞")
+        self.theme_toggle_btn.setFixedSize(35, 35)
+        self.theme_toggle_btn.clicked.connect(self.toggle_theme)
+        self.theme_toggle_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 15px;
+                font-size: 16px;
+            }
+        """)
+        top_bar_layout.addWidget(self.theme_toggle_btn)
+
+        main_layout.addWidget(self.top_bar)
+
         # Create main splitter for left, middle, and right panels
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout = QHBoxLayout(central_widget)
         main_layout.addWidget(main_splitter)
 
         # Left panel for bib entries
@@ -117,7 +148,7 @@ class PaperRefCheckApp(QMainWindow):
         left_layout.addWidget(scroll_area)
 
         # View Favorites button
-        view_fav_btn = QPushButton("View Favorites")
+        view_fav_btn = QPushButton("💖 View Favorites")
         view_fav_btn.clicked.connect(self.view_favorites)
         left_layout.addWidget(view_fav_btn)
 
@@ -152,7 +183,32 @@ class PaperRefCheckApp(QMainWindow):
         self.bibtex_display.setReadOnly(True)
         middle_layout.addWidget(self.bibtex_display)
 
-        save_details_btn = QPushButton("Save Changes")
+        # Add the copy button to bibtex_display and hide it initially
+        self.bibtex_copy_button = QPushButton("📋")
+        self.bibtex_copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(100, 100, 100, 180);
+                border: none;
+                color: white;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(120, 120, 120, 200);
+            }
+        """)
+        self.bibtex_copy_button.setFixedSize(30, 30)
+        self.bibtex_copy_button.clicked.connect(self.copy_bibtex_to_clipboard)
+        self.bibtex_copy_button.setParent(self.bibtex_display.viewport())
+        self.bibtex_copy_button.hide()
+
+        # Monitor the content changes of bibtex_display
+        self.bibtex_display.textChanged.connect(self.toggle_bibtex_copy_button)
+        # 监听 bibtex_display 的大小变化
+        self.bibtex_display.installEventFilter(self)
+
+        save_details_btn = QPushButton("🖊️ Save Changes")
         save_details_btn.clicked.connect(self.save_entry_changes)
         middle_layout.addWidget(save_details_btn)
 
@@ -190,9 +246,8 @@ class PaperRefCheckApp(QMainWindow):
         info_label.setText("""
                    <p><b>Author:</b> Kewei Tsinghua University| 
                    <b>Date:</b> 2025 | 
-                   <b>Version:</b> 0.0.5 | 
+                   <b>Version:</b> 0.0.6 | 
                    <b>License:</b> MIT</p> 
-                   
                    <p><b>Note:</b> This is an effective and light-flash assistant for checking the references and rapidly finding out problems 
                    in your papers with just uploading .bib and .tex file of the paper, 
                    which can provide great help when you are writing papers agonizingly, especially the literature review.
@@ -269,6 +324,193 @@ class PaperRefCheckApp(QMainWindow):
 
         # Initialize entries list
         self.entry_widgets = []
+
+        # Apply initial theme
+        self.apply_theme()
+
+    def eventFilter(self, obj, event):
+        """Event filter, used to handle size changes of bibtex_display"""
+        if obj == self.bibtex_display and event.type() in [14, 15]:  # Resize and Move events
+            if self.bibtex_display.toPlainText().strip():
+                self.position_bibtex_copy_button()
+        return super().eventFilter(obj, event)
+
+    def toggle_bibtex_copy_button(self):
+        """Whether to display the copy button depends on whether there is content in bibtex_display"""
+        if self.bibtex_display.toPlainText().strip():
+            self.bibtex_copy_button.show()
+            self.position_bibtex_copy_button()
+        else:
+            self.bibtex_copy_button.hide()
+
+    def position_bibtex_copy_button(self):
+        """Position the Copy button to the lower right corner of bibtex_display"""
+        text_edit_pos = self.bibtex_display.viewport().geometry()
+        button_x = text_edit_pos.width() - self.bibtex_copy_button.width() - 10
+        button_y = text_edit_pos.height() - self.bibtex_copy_button.height() - 10
+        self.bibtex_copy_button.move(button_x, button_y)
+
+    def copy_bibtex_to_clipboard(self):
+        """Copy the content in bibtex_display to the clipboard"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.bibtex_display.toPlainText())
+        self.statusBar().showMessage("BibTeX has copied to clipboard.")
+
+    def resizeEvent(self, event):
+        """Reposition the copy button when the window size changes"""
+        super().resizeEvent(event)
+        if self.bibtex_display.toPlainText().strip():
+            self.position_bibtex_copy_button()
+
+    def toggle_theme(self):
+        """Switch the interface theme between dark and light modes."""
+        self.is_dark_theme = not self.is_dark_theme
+        self.apply_theme()
+
+    def _get_dark_theme_styles(self):
+        """Get stylesheet strings for dark mode"""
+        return {
+            'window_color': QColor(53, 53, 53),
+            'window_text_color': Qt.GlobalColor.white,
+            'base_color': QColor(35, 35, 35),
+            'button_color': QColor(53, 53, 53),
+            'button_text_color': Qt.GlobalColor.white,
+            'highlight_color': QColor(42, 130, 218),
+            'top_bar_style': "background-color: #353535; border-bottom: 1px solid #444;",
+            'info_label_style': """
+                QLabel {
+                    background-color: #2d2d2d;
+                    color: #ffffff;
+                    border: 1px solid #444;
+                    border-radius: 4px;
+                    padding: 5px;
+                    font-size: 12px;
+                }
+                QLabel a {
+                    color: #4CAF50;
+                    text-decoration: none;
+                }
+                QLabel a:hover {
+                    text-decoration: underline;
+                }
+            """,
+            'main_style': """
+                QMainWindow, QWidget { background-color: #353535; color: #FFFFFF; }
+                QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }
+                QGroupBox { font-weight: bold; font-size: 14px; color: #FFFFFF; }
+                QPushButton { border: 1px solid #444; padding: 8px; border-radius: 4px; background-color: #555; color: #FFFFFF; }
+                QPushButton:hover { background-color: #666; }
+                QPushButton:pressed { background-color: #4CAF50; }
+                QLineEdit, QTextEdit { padding: 5px; border: 1px solid #444; border-radius: 4px; background-color: #2E2E2E; color: #FFFFFF; }
+                QScrollArea { border: 1px solid #444; border-radius: 4px; background-color: #2E2E2E; }
+                QLabel { color: #FFFFFF; }
+            """,
+            'search_edit_style': "QLineEdit { color: #FFFFFF; background-color: #2E2E2E; } QLineEdit[placeHolderText] { color: #AAAAAA; }",
+            'path_edit_style': "QLineEdit { color: #FFFFFF; background-color: #2E2E2E; }",
+            'button_icon': "🌞"
+        }
+
+    def _get_light_theme_styles(self):
+        """Get stylesheet strings for light mode"""
+        return {
+            'window_color': QColor(240, 240, 240),
+            'window_text_color': Qt.GlobalColor.black,
+            'base_color': QColor(255, 255, 255),
+            'button_color': QColor(240, 240, 240),
+            'button_text_color': Qt.GlobalColor.black,
+            'highlight_color': QColor(42, 130, 218),
+            'top_bar_style': "background-color: #f0f0f0; border-bottom: 1px solid #ccc;",
+            'info_label_style': """
+                QLabel {
+                    background-color: #f0f0f0;
+                    color: #000000;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    padding: 5px;
+                    font-size: 12px;
+                }
+                QLabel a {
+                    color: #4CAF50;
+                    text-decoration: none;
+                }
+                QLabel a:hover {
+                    text-decoration: underline;
+                }
+            """,
+            'main_style': """
+                QMainWindow, QWidget { background-color: #f0f0f0; color: #000000; }
+                QToolTip { color: #000000; background-color: #ffffff; border: 1px solid black; }
+                QGroupBox { font-weight: bold; font-size: 14px; color: #000000; }
+                QPushButton { border: 1px solid #ccc; padding: 8px; border-radius: 4px; background-color: #ffffff; color: #000000; }
+                QPushButton:hover { background-color: #e0e0e0; }
+                QPushButton:pressed { background-color: #4CAF50; }
+                QLineEdit, QTextEdit { padding: 5px; border: 1px solid #ccc; border-radius: 4px; background-color: #ffffff; color: #000000; }
+                QScrollArea { border: 1px solid #ccc; border-radius: 4px; background-color: #ffffff; }
+                QLabel { color: #000000; }
+            """,
+            'search_edit_style': "QLineEdit { color: #000000; background-color: #ffffff; } QLineEdit[placeHolderText] { color: #888888; }",
+            'path_edit_style': "QLineEdit { color: #000000; background-color: #ffffff; }",
+            'button_icon': "🌙"
+        }
+
+    def _apply_palette(self, styles):
+        """Apply colors based on current theme settings and Apply the palette style"""
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, styles['window_color'])
+        palette.setColor(QPalette.ColorRole.WindowText, styles['window_text_color'])
+        palette.setColor(QPalette.ColorRole.Base, styles['base_color'])
+        palette.setColor(QPalette.ColorRole.AlternateBase, styles['window_color'])
+        palette.setColor(QPalette.ColorRole.ToolTipBase, styles['window_text_color'] if styles['window_text_color'] == Qt.GlobalColor.white else Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.ToolTipText, styles['window_text_color'])
+        palette.setColor(QPalette.ColorRole.Text, styles['window_text_color'])
+        palette.setColor(QPalette.ColorRole.Button, styles['button_color'])
+        palette.setColor(QPalette.ColorRole.ButtonText, styles['button_text_color'])
+        palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
+        palette.setColor(QPalette.ColorRole.Link, styles['highlight_color'])
+        palette.setColor(QPalette.ColorRole.Highlight, styles['highlight_color'])
+        palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black if styles['window_text_color'] == Qt.GlobalColor.white else Qt.GlobalColor.white)
+        self.setPalette(palette)
+
+    def _update_info_labels(self, info_label_style):
+        """Update the style of the information tag"""
+        for label in self.findChildren(QLabel):
+            if (label.styleSheet() and
+                    ("background-color: #2d2d2d;" in label.styleSheet() or
+                     "background-color: #f0f0f0;" in label.styleSheet())):
+                label.setStyleSheet(info_label_style)
+
+    def _update_input_fields(self, search_edit_style, path_edit_style):
+        """Update input field styles"""
+        self.search_edit.setStyleSheet(search_edit_style)
+        self.bib_path_edit.setStyleSheet(path_edit_style)
+        self.tex_path_edit.setStyleSheet(path_edit_style)
+
+    def apply_theme(self):
+        """Apply the selected theme"""
+        # 获取当前主题样式
+        if self.is_dark_theme:
+            styles = self._get_dark_theme_styles()
+        else:
+            styles = self._get_light_theme_styles()
+
+        # 应用调色板
+        self._apply_palette(styles)
+
+        # 更新顶部栏背景色
+        if hasattr(self, 'top_bar'):
+            self.top_bar.setStyleSheet(styles['top_bar_style'])
+
+        # 更新主题切换按钮图标
+        self.theme_toggle_btn.setText(styles['button_icon'])
+
+        # 更新信息标签样式
+        self._update_info_labels(styles['info_label_style'])
+
+        # 应用主样式表
+        self.setStyleSheet(styles['main_style'])
+
+        # 更新输入框样式
+        self._update_input_fields(styles['search_edit_style'], styles['path_edit_style'])
 
     def load_favorites(self):
         """Load favorites from a persistent JSON file."""
@@ -405,6 +647,7 @@ class PaperRefCheckApp(QMainWindow):
     def save_entry_changes(self):
         """Save changes to the entry."""
         if not self.current_entry_key:
+            self.show_error("No entry selected.")
             return
 
         entry = self.checker.bib_entries[self.current_entry_key]
@@ -841,35 +1084,12 @@ class PaperRefCheckApp(QMainWindow):
 def apply_stylesheet(app):
     """A simple dark theme for a modern look."""
     app.setStyle("Fusion")
-    dark_palette = QPalette()
-    dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
-    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
-    app.setPalette(dark_palette)
-    app.setStyleSheet("""
-        QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }
-        QGroupBox { font-weight: bold; font-size: 14px; }
-        QPushButton { border: 1px solid #444; padding: 8px; border-radius: 4px; background-color: #555; }
-        QPushButton:hover { background-color: #666; }
-        QPushButton:pressed { background-color: #4CAF50; }
-        QLineEdit, QTextEdit { padding: 5px; border: 1px solid #444; border-radius: 4px; background-color: #2E2E2E; }
-        QScrollArea { border: 1px solid #444; border-radius: 4px; background-color: #2E2E2E; }
-    """)
-
+    # 注意：实际的主题现在由窗口类自己管理，这个函数现在是空的
+    pass
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    apply_stylesheet(app)
+    app.setStyle("Fusion")
     main_win = PaperRefCheckApp()
     main_win.show()
     sys.exit(app.exec())
