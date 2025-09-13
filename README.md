@@ -6,10 +6,10 @@ You can either pack the program to an .exe file or directly use it by running ma
 ```bash
 pyinstaller --onefile --windowed --icon="app_icon.ico" --add-data "icon.png;." --add-data "ref_checker_logic.py;." --add-data "bib_utils.py;." --add-data "app_utils.py;." --collect-all "pybtex" --collect-all "latexcodec" main_gui.py
 ```
-(Pay attention: CLI operation for older version before v0.0.7 is: 
+Pay attention: CLI operation for older version before v0.0.7 is: 
 ```bash
 pyinstaller --onefile --windowed --icon="app_icon.ico" --add-data "ref_checker_logic.py;." --add-data "icon.png;." --collect-all "pybtex" --collect-all "latexcodec" main_gui.py
-``` )
+``` 
 
 Use Pyinstaller to pack the program by downloading it through pip as follows:
 ```bash
