@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('ref_checker_logic.py', '.'), ('icon.png', '.')]
+datas = [('icon.png', '.'), ('ref_checker_logic.py', '.'), ('bib_utils.py', '.'), ('app_utils.py', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('pybtex')
